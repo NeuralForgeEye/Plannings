@@ -1,20 +1,21 @@
-Follow-up to the style-caching fix. build_excel() still takes ~106s for 24,629 rows
-× 106 columns because openpyxl is slow at writing large files.
+The project 94 Excel export (≈2,000 rows × ~400 columns) takes ~13 seconds end to end.
+Find out exactly where those 13 seconds go. Don't change any project code; measure only.
+Use temp scripts, delete them afterward, and confirm git status is clean.
 
-Replace the Excel writing in ExcelBuilderService (excel_builder_services.py) with
-xlsxwriter:
-- Create each format once with workbook.add_format() (header, odd row, even row,
-  and any other styles currently used), and reuse them.
-- Write whole rows with worksheet.write_row(row, 0, values, row_format) instead of
-  cell by cell, where possible.
-- Keep everything else identical: sheet name, column order, headers, column widths,
-  frozen header if present, colors, fonts, borders, wrapping, values.
-- Write to an in-memory BytesIO, so the rest of the flow (_ExcelStreamWrapper →
-  StreamingResponse) stays the same.
-- Keep the openpyxl version behind a feature flag so we can switch back.
+Measure each phase separately (3 runs each, report the average):
+1. DB query + all data loading (main query, HITL/feedback details, label/field/
+   source/origin maps, formatter config)
+2. build_export_schema / JSON flattening into rows
+3. build_excel(). Also tell me which library it uses right now (openpyxl or
+   xlsxwriter) and whether it still writes/styles empty cells
+4. Total server time: call the real local API with curl and record time to
+   first byte and total time
+5. Browser time: in DevTools → Network → the export request → Timing, record
+   "Waiting (TTFB)" and "Content Download". If you can't do this step yourself,
+   tell me exactly what to click and I'll send you the numbers.
+Also report: exact row count, column count, filled cells vs total cells, file size in MB.
 
-Prove it:
-1. Time the new build_excel() at 500, 2,000, 5,000 and 24,629 rows (same data as
-   before) and show old vs new in a table.
-2. Open both files and compare values and styles cell by cell; confirm they match.
-3. Run test_excel_builder_services.py and confirm everything passes.
+Output:
+- One table: phase | seconds | % of total
+- The top 2 slowest phases, with the specific function/lines responsible and why
+- For each of those 2, the fix you'd recommend and its expected time saving
